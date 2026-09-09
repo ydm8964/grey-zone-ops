@@ -2,6 +2,9 @@
 
 一个使用 **Three.js + 原生 JS** 实现的网页版第一人称战术射击游戏，还原战术撤离类玩法「烽火地带（危险行动）」的界面与玩法循环：**搜刮 → 战斗 → 撤离**。
 
+> **在线体验**：https://ydm8964.github.io/grey-zone-ops/
+> **源码仓库**：https://github.com/ydm8964/grey-zone-ops
+
 > 零外部素材依赖：所有贴图（地面/混凝土/金属/锈蚀/天空）、干员立绘、物品图标、地图缩略图均为程序化生成（CanvasTexture / SVG），音效全部由 WebAudio 实时合成。
 
 ---

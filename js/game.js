@@ -48,7 +48,9 @@ export class Game {
   /* ================= 初始化 ================= */
   _initRenderer(){
     try {
-      this.renderer = new THREE.WebGLRenderer({ canvas:this.canvas, antialias:true, powerPreference:'high-performance' });
+      // antialias:false —— 高画质档位本来就是 1.5 倍超采样（等效 SSAA），
+      // 再叠 4x MSAA 是双重抗锯齿：观感提升有限，带宽开销巨大，集显上这是最大的单项帧率杀手
+      this.renderer = new THREE.WebGLRenderer({ canvas:this.canvas, antialias:false, powerPreference:'high-performance' });
     } catch(err){
       this.noWebgl = true;
       console.warn('WebGL 不可用：', err.message);
@@ -64,7 +66,8 @@ export class Game {
     this.renderer.toneMappingExposure = 1.05;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(90, innerWidth/innerHeight, 0.05, 600);
+    // far 350：FogExp2 0.0075 在 330m 处已几乎全雾，600 只会浪费深度精度与裁剪开销
+    this.camera = new THREE.PerspectiveCamera(90, innerWidth/innerHeight, 0.05, 350);
     this.camera.rotation.order = 'YXZ';
     this.scene.add(this.camera);
 
@@ -200,10 +203,12 @@ export class Game {
     this.keys = {}; this.mouse.left = this.mouse.right = false;
     this._useDone = null; this._firedThisClick = false; this._burstLeft = 0;
     this.ended = false; this.uiMode = null; this.paused = false;
+    this._enemyDirty = false;
     // 画质自适应计时复位（等级由上面的预设决定，不要在这里清零后又被自动降级重复处理）
     this._lowT = 0;
 
     this.world = buildWorld(this.scene, cfg.map, cfg.diff);
+    this._initFxPool();
 
     // 玩家
     const sp = this.world.spawnPoints[Math.floor(Math.random()*this.world.spawnPoints.length)];
@@ -420,8 +425,7 @@ export class Game {
     this.gunFlash.material.opacity = 1;
     this.gunFlash.rotation.z = rnd(0,Math.PI);
     this.gunFlash.scale.setScalar(rnd(.8,1.4));
-    this.muzzleLight.intensity = 3.2;
-    setTimeout(()=>{ this.muzzleLight.intensity = 0; }, 45);
+    this.muzzleLight.intensity = 3.2;   // 衰减在 _updateWeapon 主循环里做，不再每发开 setTimeout
 
     // 射线
     const dir = new THREE.Vector3(0,0,-1).applyQuaternion(this.camera.quaternion);
@@ -449,6 +453,7 @@ export class Game {
         this._spawnBloodFx(r.point);
         if (res.dead){
           anyKill = true;
+          this._enemyDirty = true;
           p.kills++;
           Audio2.kill();
           this.hud.banner('已 击 毙');
@@ -514,34 +519,69 @@ export class Game {
   }
 
   _spawnDecal(point, dir){
-    const g = new THREE.Mesh(new THREE.CircleGeometry(rnd(.05,.09), 8),
-      new THREE.MeshBasicMaterial({color:0x111111, transparent:true, opacity:.85, depthWrite:false}));
-    g.position.copy(point).addScaledVector(dir, .02);
-    g.lookAt(point.clone().sub(dir));
-    this.scene.add(g);
-    this.decals.push(g);
-    if (this.decals.length > 46){
-      const old = this.decals.shift();
-      this.scene.remove(old); old.geometry.dispose();
-    }
-    // 火花
-    const sp = new THREE.Mesh(new THREE.SphereGeometry(.05,6,5),
-      new THREE.MeshBasicMaterial({color:0xffcc66}));
-    sp.position.copy(point);
-    this.scene.add(sp);
-    setTimeout(()=>{ this.scene.remove(sp); sp.geometry.dispose(); sp.material.dispose(); }, 60);
+    // 弹孔走对象池：46 个轮换，超出后抢占最早的位置，战斗中零分配
+    const P = this.fxPool.decal;
+    const m = P.list[P.i]; P.i = (P.i + 1) % P.list.length;
+    m.position.copy(point).addScaledVector(dir, .02);
+    m.lookAt(this._fxV.copy(point).sub(dir));
+    m.scale.setScalar(rnd(.7, 1.3));
+    if (!m.visible) m.visible = true;
+    // 火花：同样池化，用 life 在主循环里熄灭（不再每次 setTimeout 新建对象）
+    const S = this.fxPool.spark;
+    const sp = S.list[S.i]; S.i = (S.i + 1) % S.list.length;
+    sp.position.copy(point); sp.userData.v = null;
+    sp.userData.life = .06;
+    if (!sp.visible) sp.visible = true;
+    const idx = this.bloods.indexOf(sp);
+    if (idx >= 0) this.bloods.splice(idx, 1);
+    this.bloods.push(sp);
   }
   _spawnBloodFx(point){
+    const B = this.fxPool.blood;
     for (let i=0;i<5;i++){
-      const m = new THREE.Mesh(new THREE.SphereGeometry(rnd(.03,.07),5,4),
-        new THREE.MeshBasicMaterial({color:0xaa1420, transparent:true, opacity:.9}));
+      const m = B.list[B.i]; B.i = (B.i + 1) % B.list.length;
       m.position.copy(point);
-      m.userData.v = new THREE.Vector3(rnd(-2,2), rnd(0,3), rnd(-2,2));
+      m.scale.setScalar(rnd(.6,1.4));
+      m.userData.v.set(rnd(-2,2), rnd(0,3), rnd(-2,2));
       m.userData.life = .5;
-      this.scene.add(m);
+      m.material.opacity = .9;
+      if (!m.visible) m.visible = true;
+      const idx = this.bloods.indexOf(m);
+      if (idx >= 0) this.bloods.splice(idx, 1);
       this.bloods.push(m);
     }
-    if (this.bloods.length > 60){ const o=this.bloods.shift(); this.scene.remove(o); o.geometry.dispose(); }
+  }
+  /* 开火特效对象池：弹孔/火花共享几何与材质，血点需要独立透明度所以每实例克隆材质。
+     池只在本局开始时建一次，对枪时不再分配任何 geometry / material / Vector3。 */
+  _initFxPool(){
+    const mk = (geo, mat, n) => {
+      const arr = [];
+      for (let i=0;i<n;i++){
+        const m = new THREE.Mesh(geo, mat);
+        m.visible = false;
+        m.userData.life = 0; m.userData.v = null;
+        this.scene.add(m); arr.push(m);
+      }
+      return { list: arr, i: 0 };
+    };
+    this.fxPool = {
+      decal: mk(new THREE.CircleGeometry(.07, 8),
+        new THREE.MeshBasicMaterial({color:0x111111, transparent:true, opacity:.85, depthWrite:false}), 46),
+      spark: mk(new THREE.SphereGeometry(.05, 6, 5),
+        new THREE.MeshBasicMaterial({color:0xffcc66}), 24),
+      blood: null,
+    };
+    // 血点：每实例克隆材质（透明度各自衰减）
+    const bGeo = new THREE.SphereGeometry(.05, 5, 4);
+    const bArr = [];
+    for (let i=0;i<60;i++){
+      const m = new THREE.Mesh(bGeo, new THREE.MeshBasicMaterial({color:0xaa1420, transparent:true, opacity:.9}));
+      m.visible = false;
+      m.userData.life = 0; m.userData.v = new THREE.Vector3();
+      this.scene.add(m); bArr.push(m);
+    }
+    this.fxPool.blood = { list: bArr, i: 0 };
+    this._fxV = new THREE.Vector3();
   }
 
   _dropLoot(e){
@@ -595,6 +635,7 @@ export class Game {
         this.p.dmgDealt += r.dmg;
         this.hud.hitmark(r.dead);
         if (r.dead){
+          this._enemyDirty = true;
           this.p.kills++; Audio2.kill();
           this.hud.addKill('你', e.name, '手雷', false, true);
           this._dropLoot(e);
@@ -623,10 +664,12 @@ export class Game {
     p.hp -= dmg;
     Audio2.pain();
     this.hud.flash();
-    // 方向指示
+    // 方向指示（CSS rotate 顺时针为正，0 = 正前方）。
+    // 世界方位角 ang = atan2(dx,dz)；yaw 为正表示玩家逆时针转，世界相对玩家顺时针偏 yaw。
+    // 屏幕角 = π + yaw - ang。原写法是 π - ang - yaw，差 2yaw：不转身碰巧正确，转身后前后颠倒。
     if (fromPos){
       const ang = Math.atan2(fromPos.x-p.pos.x, fromPos.z-p.pos.z);
-      this.hud.damageFrom(-(ang + p.yaw) + Math.PI);
+      this.hud.damageFrom(Math.PI + p.yaw - ang);
     }
     // 出血
     if (p.body[target] <= 0 && !p.bleeding && Math.random()<.5){
@@ -902,14 +945,14 @@ export class Game {
     this.renderer.render(this.scene, this.camera);
   }
 
-  /* 自适应画质：持续低帧时先关阴影、再降渲染分辨率，避免弱机卡成幻灯片 */
+  /* 自适应画质：持续低帧时逐级降级（关阴影 → 0.75 分辨率 → 0.6 分辨率），避免弱机卡成幻灯片 */
   _autoQuality(dt){
     if (this._qLevel == null) this._qLevel = 0;
     if (this._lowT == null) this._lowT = 0;
-    if (this._qLevel >= 2) return;
-    if (this.fps > 0 && this.fps < 42) this._lowT += dt;
+    if (this._qLevel >= 3) return;
+    if (this.fps > 0 && this.fps < 45) this._lowT += dt;
     else this._lowT = Math.max(0, this._lowT - dt*0.6);
-    if (this._lowT < 3) return;
+    if (this._lowT < 2.5) return;
     this._lowT = 0; this._qLevel++;
     // 关阴影后需让材质重新编译，否则画面不更新
     const refresh = ()=> this.scene.traverse(o=>{
@@ -920,9 +963,12 @@ export class Game {
       this.renderer.shadowMap.enabled = false;
       refresh();
       this.hud.toast('性能模式：已关闭实时阴影', '#ff9d2e');
-    } else {
+    } else if (this._qLevel === 2){
       this.renderer.setPixelRatio(0.75);
       this.hud.toast('性能模式：已降低渲染分辨率', '#ff9d2e');
+    } else {
+      this.renderer.setPixelRatio(0.6);
+      this.hud.toast('性能模式：已进一步降低分辨率', '#ff9d2e');
     }
   }
 
@@ -1066,6 +1112,8 @@ export class Game {
     // 枪口火焰衰减
     if (this.gunFlash.material.opacity>0)
       this.gunFlash.material.opacity = Math.max(0, this.gunFlash.material.opacity - dt*14);
+    if (this.muzzleLight && this.muzzleLight.intensity>0)
+      this.muzzleLight.intensity = Math.max(0, this.muzzleLight.intensity - dt*75);
   }
 
   _updateEnemies(dt){
@@ -1074,7 +1122,7 @@ export class Game {
       e.update(dt, { pos:p.pos, camQuat:this.camera.quaternion, justShot:p.justShot, lastShotTime:p.lastShotTime },
         this.world, (enemy, dmg, dist)=>{
           if (!this.running || this.ended) return;
-          Audio2.shot('rifle', dist/9);
+          if (dist < 60) Audio2.shot('rifle', dist/9);   // 60m 外音量已衰减到近乎为零，跳过整链音频节点
           if (dmg>0 && Math.random() < .78){
             this._takeDamage(dmg * this.cfg.diff.aiDmg, Math.random()<.13?'head':'chest', enemy.pos);
           } else if (Math.random()<.4){
@@ -1084,8 +1132,11 @@ export class Game {
         });
     }
     p.justShot = false;
-    // 清理已消失的敌人
-    this.enemies = this.enemies.filter(e=> e.alive || e.deathT < 3.5);
+    // 清理已消失的敌人（仅在有尸体到期时才过滤，不再每帧重建数组）
+    if (this._enemyDirty){
+      this._enemyDirty = false;
+      this.enemies = this.enemies.filter(e=> e.alive || e.deathT < 3.5);
+    }
   }
 
   _updateGrenades(dt){
@@ -1111,14 +1162,16 @@ export class Game {
         this.grenades.splice(i,1);
       }
     }
-    // 血点（动态粒子，独立数组，不与静态弹孔互相挤占）
+    // 特效粒子（火花/血点）：全部来自对象池，熄灭只关 visible，不 remove / dispose
     for (let i=this.bloods.length-1;i>=0;i--){
       const d = this.bloods[i];
       d.userData.life -= dt;
-      d.userData.v.y -= 9*dt;
-      d.position.addScaledVector(d.userData.v, dt);
-      d.material.opacity = Math.max(0, d.userData.life*2);
-      if (d.userData.life<=0){ this.scene.remove(d); d.geometry.dispose(); this.bloods.splice(i,1); }
+      if (d.userData.v){
+        d.userData.v.y -= 9*dt;
+        d.position.addScaledVector(d.userData.v, dt);
+        d.material.opacity = Math.max(0, d.userData.life*2);
+      }
+      if (d.userData.life<=0){ d.visible = false; this.bloods.splice(i,1); }
     }
   }
 

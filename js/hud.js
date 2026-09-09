@@ -115,8 +115,16 @@ export class HUD {
     h.classList.toggle('kill', !!kill);
     h.classList.add('show');
   }
-  ads(on){ this.el.ade.classList.toggle('on', on); }
-  scope(on){ this.el.scope.classList.toggle('on', on); }
+  ads(on){
+    if (this._adsOn === on) return;
+    this._adsOn = on;
+    this.el.ade.classList.toggle('on', on);
+  }
+  scope(on){
+    if (this._scopeOn === on) return;
+    this._scopeOn = on;
+    this.el.scope.classList.toggle('on', on);
+  }
   flash(){ const f=this.el.hitFlash; f.classList.remove('on'); void f.offsetWidth; f.classList.add('on'); }
 
   /* ---------- 播报 / 提示 ---------- */

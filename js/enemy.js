@@ -22,6 +22,7 @@ const _tmpQ2 = /* @__PURE__ */ new THREE.Quaternion();
 const _vA = /* @__PURE__ */ new THREE.Vector3();
 const _vB = /* @__PURE__ */ new THREE.Vector3();
 const _vC = /* @__PURE__ */ new THREE.Vector3();
+const _Y_AXIS = /* @__PURE__ */ new THREE.Vector3(0, 1, 0);
 
 /* 合并一组（已预乘变换、已非索引化的）几何体为一个 BufferGeometry */
 function mergeGeoms(geos){
@@ -480,17 +481,19 @@ export class Enemy {
     }
 
     // ---- 血条 ----
-    const showBar = this.hp < this.maxHp || this.alertLevel > .05;
-    this.bar.group.visible = showBar;
+    // 70m 外血条小到看不清，直接关掉，顺带省掉 billboard 计算
+    const showBar = dist < 70 && (this.hp < this.maxHp || this.alertLevel > .05);
+    if (showBar !== this._barOn) this._barOn = this.bar.group.visible = showBar;
     if (showBar){
       const p = Math.max(0, this.hp/this.maxHp);
       this.bar.fg.scale.x = p;
       this.bar.fg.position.x = -(1-p)*0.48;
       this.bar.fg.material.color.setHex(this.armor>0 ? 0x5ac8ff : (p>.5?0x4ade80:(p>.25?0xffd84d:0xff4757)));
-      // billboard：血条挂在敌人 mesh 下，须先抵消父节点旋转（敌人转身不会带着血条乱转）
-      this.mesh.updateWorldMatrix(true, false);
-      _tmpQ1.setFromRotationMatrix(this.mesh.matrixWorld).invert();
-      this.bar.group.quaternion.copy(_tmpQ2.copy(player.camQuat).premultiply(_tmpQ1));
+      // billboard：血条挂在敌人 mesh 下，须先抵消父节点旋转。
+      // 根节点只有绕 Y 的 yaw，逆旋转直接用 R_y(-yaw) 即可，
+      // 不必每敌每帧 updateWorldMatrix（37 敌时是上千次矩阵运算）
+      _tmpQ1.setFromAxisAngle(_Y_AXIS, -this.yaw);
+      this.bar.group.quaternion.copy(player.camQuat).premultiply(_tmpQ1);
     }
     // 受击闪红：只在状态翻转时遍历一次。
     // 原实现 else 分支每帧 traverse 全部部件并重写 emissive，37 敌时约 1600 次/帧

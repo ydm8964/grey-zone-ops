@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>灰区行动 · WEB 战术射击</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%230d120d'/%3E%3Cpolygon points='8,33 20,6 32,33 20,26' fill='%23d8ff3e'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/ui.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/controls/PointerLockControls.js": "./vendor/PointerLockControls.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<!-- ============================================================
+     全局：噪点 / 扫描线 / 载入
+============================================================ -->
+<div id="grain"></div>
+<div id="scanlines"></div>
+<div id="vignette"></div>
+
+<!-- ============================================================
+     1. 启动载入页
+============================================================ -->
+<div id="boot" class="screen active">
+  <div class="boot-wrap">
+    <div class="boot-logo">
+      <svg viewBox="0 0 420 120" class="logo-svg">
+        <polygon points="30,95 60,25 90,95 60,70" fill="var(--accent)"/>
+        <text x="112" y="72" class="logo-cn">灰区行动</text>
+        <text x="112" y="102" class="logo-en">GREY ZONE OPS · TACTICAL EXTRACTION</text>
+      </svg>
+    </div>
+    <div class="boot-bar"><i id="bootFill"></i></div>
+    <div class="boot-tip" id="bootTip">正在初始化战术系统…</div>
+    <button id="bootStart" class="df-btn primary big" style="display:none">进 入 大 厅</button>
+    <div class="boot-hint">建议使用 Chrome / Edge · 全屏游玩 · 需支持 WebGL</div>
+  </div>
+</div>
+
+<!-- ============================================================
+     2. 主大厅
+============================================================ -->
+<div id="lobby" class="screen">
+
+  <!-- 顶部导航 -->
+  <header class="top-bar">
+    <div class="brand">
+      <svg viewBox="0 0 40 40" class="brand-mark"><polygon points="8,34 20,6 32,34 20,26" fill="var(--accent)"/></svg>
+      <span class="brand-txt">灰区行动<em>GREY ZONE OPS</em></span>
+    </div>
+    <nav class="main-nav">
+      <button class="nav-item active" data-tab="lobby">开始游戏</button>
+      <button class="nav-item" data-tab="operators">干员</button>
+      <button class="nav-item" data-tab="stash">仓库</button>
+      <button class="nav-item" data-tab="market">交易行</button>
+      <button class="nav-item" data-tab="rank">排行</button>
+    </nav>
+    <div class="top-right">
+      <div class="currency">
+        <span class="cur-item"><i class="ic-coin"></i><b id="curCoin">1,284,600</b></span>
+        <span class="cur-item"><i class="ic-gem"></i><b id="curGem">8,420</b></span>
+        <span class="cur-item"><i class="ic-ticket"></i><b id="curTicket">32</b></span>
+      </div>
+      <div class="player-chip">
+        <div class="avatar"><span id="playerAvatarLv">62</span></div>
+        <div class="p-meta">
+          <b id="playerName">指挥官·零柒</b>
+          <div class="lv-bar"><i style="width:68%"></i></div>
+        </div>
+      </div>
+      <button class="icon-btn" id="btnSettings" title="设置"><svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7zM19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.11A1.7 1.7 0 0 0 9 19.38a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.62 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.11A1.7 1.7 0 0 0 4.68 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.62h.05A1.7 1.7 0 0 0 10.6 3.06V3a2 2 0 1 1 4 0v.11A1.7 1.7 0 0 0 16 4.68a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.38 9v.05A1.7 1.7 0 0 0 21 10.6h.05a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1.4z" fill="currentColor"/></svg></button>
+      <button class="icon-btn" id="btnMute" title="音效"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z" fill="currentColor"/></svg></button>
+    </div>
+  </header>
+
+  <!-- 主体 -->
+  <div class="lobby-body">
+
+    <!-- 左：模式列表 -->
+    <aside class="mode-rail">
+      <div class="rail-title">作战模式</div>
+      <button class="mode-card active" data-mode="ops">
+        <span class="mode-tag hot">HOT</span>
+        <b>危险行动</b>
+        <em>OPERATIONS</em>
+        <p>3人小队 · 搜刮物资 · 限时撤离</p>
+        <div class="mode-stat"><span>在线 <b>12.4万</b></span></div>
+      </button>
+      <button class="mode-card" data-mode="warfare">
+        <b>全面战场</b>
+        <em>WARFARE</em>
+        <p>32v32 · 载具 · 据点攻防</p>
+        <div class="mode-stat"><span>在线 <b>8.7万</b></span></div>
+      </button>
+      <button class="mode-card" data-mode="raid">
+        <span class="mode-tag new">PvE</span>
+        <b>黑鹰坠落</b>
+        <em>BLACK HAWK DOWN</em>
+        <p>战役合作 · 剧情任务</p>
+        <div class="mode-stat"><span>在线 <b>3.1万</b></span></div>
+      </button>
+      <div class="rail-foot">
+        <div class="squad-slot"><i></i><span>队员 1/3 · 等待中</span></div>
+        <button class="df-btn ghost sm">邀请好友</button>
+      </div>
+    </aside>
+
+    <!-- 中：地图选择 -->
+    <section class="map-stage">
+      <div class="stage-head">
+        <h2 id="modeName">危险行动</h2>
+        <div class="diff-sel">
+          <span>难度</span>
+          <button class="df-chip active" data-diff="0">常规</button>
+          <button class="df-chip" data-diff="1">机密</button>
+          <button class="df-chip" data-diff="2">绝密</button>
+        </div>
+      </div>
+      <div class="map-grid" id="mapGrid"></div>
+      <div class="map-detail">
+        <div class="md-left">
+          <h3 id="mapTitle">零号大坝</h3>
+          <p id="mapDesc">阿萨拉卫队控制的水利枢纽，物资丰沛，撤离点三处。</p>
+          <ul class="md-tags" id="mapTags"></ul>
+        </div>
+        <div class="md-right">
+          <div class="md-row"><span>建议人数</span><b id="mapSquad">3 人</b></div>
+          <div class="md-row"><span>撤离时间</span><b id="mapTime">25 分钟</b></div>
+          <div class="md-row"><span>威胁等级</span><b id="mapThreat" class="lv-2">★★☆☆☆</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右：干员 + 配装 -->
+    <aside class="loadout-rail">
+      <div class="rail-title">当前干员</div>
+      <div class="op-portrait" id="opPortrait">
+        <div class="op-silhouette" id="opSilhouette"></div>
+        <div class="op-badge"><span id="opRole">突击</span></div>
+      </div>
+      <div class="op-name"><b id="opName">红狼</b><em id="opEn">WOLF</em></div>
+      <div class="skill-list" id="skillList"></div>
+
+      <div class="rail-title">武器配装</div>
+      <div class="weapon-slots">
+        <div class="wslot" data-slot="1"><span class="wkey">1</span><b id="wSlot1">M4A1 突击步枪</b><em>5.56×45mm</em></div>
+        <div class="wslot" data-slot="2"><span class="wkey">2</span><b id="wSlot2">G17 手枪</b><em>9×19mm</em></div>
+        <div class="wslot"><span class="wkey">3</span><b>战术刀</b><em>近战</em></div>
+      </div>
+      <div class="gear-slots">
+        <div class="gslot"><b>护甲</b><em>三级战术背心</em></div>
+        <div class="gslot"><b>背包</b><em>20格 突击包</em></div>
+        <div class="gslot"><b>头盔</b><em>三级战术头盔</em></div>
+      </div>
+      <button class="df-btn primary block lg" id="btnDeploy">部 署 作 战</button>
+    </aside>
+  </div>
+
+  <!-- 底部状态条 -->
+  <footer class="lobby-foot">
+    <div class="foot-item"><i class="dot ok"></i>服务器：华东-01 · 延迟 <b>18ms</b></div>
+    <div class="foot-item">赛季 S4「破晓」· 剩余 <b>23天</b></div>
+    <div class="foot-scroll">系统公告：本周热门武器配装方案已更新，前往军械库查看 ›</div>
+  </footer>
+</div>
+
+<!-- ============================================================
+     3. 干员选择页
+============================================================ -->
+<div id="operators" class="screen sub-screen">
+  <div class="sub-head">
+    <button class="back-btn" data-back="lobby">‹ 返回</button>
+    <h2>干员 <em>OPERATORS</em></h2>
+    <div class="role-filter">
+      <button class="df-chip active" data-role="all">全部</button>
+      <button class="df-chip" data-role="突击">突击</button>
+      <button class="df-chip" data-role="侦察">侦察</button>
+      <button class="df-chip" data-role="支援">支援</button>
+      <button class="df-chip" data-role="工程">工程</button>
+    </div>
+  </div>
+  <div class="op-grid" id="opGrid"></div>
+</div>
+
+<!-- ============================================================
+     4. 仓库页
+============================================================ -->
+<div id="stash" class="screen sub-screen">
+  <div class="sub-head">
+    <button class="back-btn" data-back="lobby">‹ 返回</button>
+    <h2>仓库 <em>STASH</em></h2>
+    <div class="stash-tabs">
+      <button class="df-chip active" data-stash="all">全部</button>
+      <button class="df-chip" data-stash="weapon">武器</button>
+      <button class="df-chip" data-stash="ammo">弹药</button>
+      <button class="df-chip" data-stash="medic">医疗</button>
+      <button class="df-chip" data-stash="armor">护甲</button>
+      <button class="df-chip" data-stash="valuable">收藏品</button>
+    </div>
+  </div>
+  <div class="stash-body">
+    <div class="stash-grid" id="stashGrid"></div>
+    <div class="stash-side">
+      <h4>容量</h4>
+      <div class="cap-bar"><i style="width:61%"></i><span>61 / 100</span></div>
+      <h4>总资产估值</h4>
+      <div class="total-val">₵ <b id="stashValue">4,820,150</b></div>
+      <h4>品级分布</h4>
+      <div class="rare-dist" id="rareDist"></div>
+      <h4>最近获得</h4>
+      <ul class="recent-list" id="recentList"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     5. 交易行 / 排行（占位页）
+============================================================ -->
+<div id="market" class="screen sub-screen">
+  <div class="sub-head">
+    <button class="back-btn" data-back="lobby">‹ 返回</button>
+    <h2>交易行 <em>MARKET</em></h2>
+  </div>
+  <div class="market-body">
+    <div class="mk-top">
+      <div class="mk-tabs">
+        <button class="df-chip active" data-mk="all">全部</button>
+        <button class="df-chip" data-mk="收藏品">收藏品</button>
+        <button class="df-chip" data-mk="武器">武器</button>
+        <button class="df-chip" data-mk="医疗">医疗</button>
+        <button class="df-chip" data-mk="护甲">护甲</button>
+      </div>
+      <div class="mk-search"><i>⌕</i><input id="mkSearch" placeholder="搜索物品名称…" autocomplete="off"></div>
+      <div class="mk-stats">
+        <div class="mk-stat"><label>持有资金</label><b class="acc">₵ 2,486,300</b></div>
+        <div class="mk-stat"><label>今日成交</label><b>1,284</b></div>
+        <div class="mk-stat"><label>手续费</label><b>8%</b></div>
+      </div>
+    </div>
+    <table class="df-table mk-table">
+      <thead><tr><th>物品</th><th>品类</th><th>均价</th><th>24h 涨跌</th><th>挂单数</th><th></th></tr></thead>
+      <tbody id="marketBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="rank" class="screen sub-screen">
+  <div class="sub-head">
+    <button class="back-btn" data-back="lobby">‹ 返回</button>
+    <h2>排行榜 <em>LEADERBOARD</em></h2>
+  </div>
+  <div class="market-body">
+    <div class="mk-top">
+      <div class="mk-tabs">
+        <button class="df-chip active" data-rk="all">战区榜</button>
+        <button class="df-chip" data-rk="season">赛季榜</button>
+        <button class="df-chip" data-rk="friend">好友榜</button>
+      </div>
+      <div class="mk-stats">
+        <div class="mk-stat"><label>当前段位</label><b class="acc">钻石 Ⅲ</b></div>
+        <div class="mk-stat"><label>我的排名</label><b># 1,284</b></div>
+        <div class="mk-stat"><label>赛季击杀</label><b>486</b></div>
+      </div>
+    </div>
+    <div class="rk-podium" id="rkPodium"></div>
+    <table class="df-table rk-table">
+      <thead><tr><th>#</th><th>玩家</th><th>干员</th><th>段位分</th><th>K/D</th><th>撤离率</th></tr></thead>
+      <tbody id="rankBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================
+     6. 战斗 HUD
+============================================================ -->
+<div id="hud" class="screen">
+
+  <canvas id="scene"></canvas>
+
+  <!-- 准星 -->
+  <div id="crosshair">
+    <i class="ch-dot"></i>
+    <i class="ch-t"></i><i class="ch-b"></i><i class="ch-l"></i><i class="ch-r"></i>
+    <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+  </div>
+
+  <!-- 击杀播报 -->
+  <div id="killfeed"></div>
+
+  <!-- 顶部中央：任务 / 计时 -->
+  <div id="missionBar">
+    <div class="mb-time"><span id="missionClock">24:58</span></div>
+    <div class="mb-task"><i class="task-ic"></i><span id="missionText">搜索物资并前往撤离点</span></div>
+    <div class="mb-obj" id="objectiveList"></div>
+  </div>
+
+  <!-- 右上：小地图 -->
+  <div id="minimapWrap">
+    <canvas id="minimap" width="460" height="460"></canvas>
+    <div class="mm-compass" id="mmHeading">N</div>
+    <div class="mm-coord" id="mmCoord">E 142 · N 087</div>
+  </div>
+
+  <!-- 左上：队伍状态 -->
+  <div id="squadPanel">
+    <div class="sq-row self"><span class="sq-name">你 · 红狼</span><div class="sq-bars"><i class="hp" style="width:100%"></i><i class="ar" style="width:100%"></i></div><span class="sq-hp">100</span></div>
+    <div class="sq-row"><span class="sq-name">队员 · 蜂医</span><div class="sq-bars"><i class="hp" style="width:82%"></i><i class="ar" style="width:60%"></i></div><span class="sq-hp">82</span></div>
+    <div class="sq-row"><span class="sq-name">队员 · 威龙</span><div class="sq-bars"><i class="hp" style="width:45%"></i><i class="ar" style="width:0%"></i></div><span class="sq-hp">45</span></div>
+  </div>
+
+  <!-- 左下：状态面板 -->
+  <div id="statusPanel">
+    <div class="sp-row">
+      <div class="sp-label">体力</div>
+      <div class="sp-bar stam"><i id="staminaBar" style="width:100%"></i></div>
+    </div>
+    <div class="sp-row">
+      <div class="sp-num"><b id="hpNum">100</b><span>/100</span></div>
+      <div class="sp-bars">
+        <div class="sp-bar armor"><i id="armorBar" style="width:100%"></i><em id="armorNum">100</em></div>
+        <div class="sp-bar hp"><i id="hpBar" style="width:100%"></i></div>
+      </div>
+    </div>
+    <div class="bodymap" id="bodymap">
+      <div class="bm-head" data-part="head"></div>
+      <div class="bm-chest" data-part="chest"></div>
+      <div class="bm-arm l" data-part="larm"></div>
+      <div class="bm-arm r" data-part="rarm"></div>
+      <div class="bm-leg l" data-part="lleg"></div>
+      <div class="bm-leg r" data-part="rleg"></div>
+    </div>
+  </div>
+
+  <!-- 右下：武器面板 -->
+  <div id="weaponPanel">
+    <div class="wp-top">
+      <span class="wp-firemode" id="fireMode">全自动</span>
+      <span class="wp-name" id="wpName">M4A1</span>
+    </div>
+    <div class="wp-ammo">
+      <b id="ammoMag">30</b><span id="ammoReserve">/ 210</span>
+    </div>
+    <div class="wp-mag" id="wpMag"></div>
+    <div class="wp-grenade"><i class="gn-ic"></i><b id="grenadeNum">2</b><span>4</span></div>
+  </div>
+
+  <!-- 底部：快捷栏 -->
+  <div id="quickbar"></div>
+
+  <!-- 交互提示 -->
+  <div id="interactPrompt" style="display:none">
+    <div class="ip-bar"><i id="ipFill"></i></div>
+    <span><b id="ipKey">F</b> <em id="ipText">搜刮物资箱</em></span>
+  </div>
+
+  <!-- 受伤方向指示 -->
+  <div id="dmgIndicators"></div>
+
+  <!-- 屏幕特效 -->
+  <div id="bloodOverlay"></div>
+  <div id="hitFlash"></div>
+  <div id="adeOverlay"><div class="ade-vig"></div></div>
+  <div id="scopeOverlay"><div class="scope-ring"></div><div class="scope-line h"></div><div class="scope-line v"></div></div>
+
+  <!-- 拾取流水 -->
+  <div id="lootStream"></div>
+
+  <!-- 中央提示 -->
+  <div id="centerToast"></div>
+
+  <!-- 网络/性能 -->
+  <div id="perfPanel">
+    <span class="perf-item"><i class="dot ok"></i><b id="pingVal">18</b>ms</span>
+    <span class="perf-item"><b id="fpsVal">60</b>FPS</span>
+  </div>
+
+  <!-- 击杀确认横幅 -->
+  <div id="killBanner"></div>
+
+  <!-- Tab 计分板 -->
+  <div id="scoreboard" style="display:none">
+    <div class="sb-head">
+      <div class="sb-title">危险行动 · <span id="sbMap">零号大坝</span></div>
+      <div class="sb-time" id="sbTime">24:58</div>
+    </div>
+    <table class="sb-table">
+      <thead><tr><th>干员</th><th>击杀</th><th>伤害</th><th>搜刮</th><th>状态</th></tr></thead>
+      <tbody id="sbBody"></tbody>
+    </table>
+    <div class="sb-foot">按住 <b>TAB</b> 查看 · 松开关闭</div>
+  </div>
+
+  <!-- 战术背包 -->
+  <div id="backpack" style="display:none">
+    <div class="bp-head"><b>战术背包</b><span class="bp-weight">负重 18.4 / 30.0 kg</span><button class="bp-close" id="bpClose">×</button></div>
+    <div class="bp-body">
+      <div class="bp-col">
+        <h5>装备</h5>
+        <div class="bp-equip" id="bpEquip"></div>
+      </div>
+      <div class="bp-col grow">
+        <h5>容器 <em id="bpCap">20 格</em></h5>
+        <div class="bp-grid" id="bpGrid"></div>
+      </div>
+      <div class="bp-col">
+        <h5>物品详情</h5>
+        <div class="bp-detail" id="bpDetail"><p class="dim">选择一个物品查看详情</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 撤离提示 -->
+  <div id="extractPrompt" style="display:none">
+    <div class="ep-title">撤离点 · <span id="epName">西侧闸口</span></div>
+    <div class="ep-ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44"/><circle cx="50" cy="50" r="44" id="epCircle"/></svg><b id="epCount">15</b></div>
+    <div class="ep-tip">保持在此区域内 · 不要移动</div>
+  </div>
+
+  <!-- 暂停 / 设置 -->
+  <div id="pauseMenu" style="display:none">
+    <div class="pm-box">
+      <h3>已暂停</h3>
+      <button class="df-btn primary block" id="btnResume">继续游戏</button>
+      <button class="df-btn ghost block" id="btnOpenSettings2">设置</button>
+      <button class="df-btn danger block" id="btnAbandon">放弃行动</button>
+      <div class="pm-hint">按 <b>ESC</b> 释放鼠标 · 点击画面重新锁定</div>
+    </div>
+  </div>
+
+  <!-- 结算 -->
+  <div id="resultScreen" style="display:none">
+    <div class="res-box">
+      <div class="res-banner" id="resBanner">行动成功</div>
+      <div class="res-sub" id="resSub">成功撤离 · 零号大坝</div>
+      <div class="res-stats" id="resStats"></div>
+      <div class="res-loot" id="resLoot"></div>
+      <div class="res-btns">
+        <button class="df-btn primary" id="btnAgain">再来一局</button>
+        <button class="df-btn ghost" id="btnBackLobby">返回大厅</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 部署倒计时 -->
+  <div id="deployOverlay" style="display:none">
+    <div class="dp-map" id="dpMapName">零号大坝</div>
+    <div class="dp-count" id="dpCount">3</div>
+    <div class="dp-tip">战术小队正在进入战区…</div>
+    <div class="dp-keys">
+      <span><b>WASD</b> 移动</span><span><b>左键</b> 开火</span><span><b>右键</b> 机瞄</span>
+      <span><b>F</b> 搜刮</span><span><b>Tab</b> 背包</span><span><b>G</b> 手雷</span>
+      <span><b>H</b> 自救</span><span><b>Esc</b> 暂停</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     7. 设置弹窗
+============================================================ -->
+<div id="settingsModal" class="modal" style="display:none">
+  <div class="modal-box wide">
+    <div class="modal-head"><b>设置</b><button class="modal-close" data-close="settingsModal">×</button></div>
+    <div class="set-body">
+      <div class="set-nav">
+        <button class="set-nav-item active" data-set="video">画面</button>
+        <button class="set-nav-item" data-set="audio">音频</button>
+        <button class="set-nav-item" data-set="control">操作</button>
+        <button class="set-nav-item" data-set="game">游戏</button>
+      </div>
+      <div class="set-content" id="setContent"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="df-btn ghost" data-close="settingsModal">取消</button>
+      <button class="df-btn primary" data-close="settingsModal">保存</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
